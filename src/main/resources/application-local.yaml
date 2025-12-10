@@ -1,0 +1,11 @@
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+
+app:
+  music-service:
+    base-url: http://localhost:8080
+  kafka:
+    topics:
+      facts-events: music.facts.events
+      generated-facts: music.track.facts.generated
