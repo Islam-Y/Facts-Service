@@ -3,6 +3,9 @@ package ru.itmo.music.facts.config;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+/**
+ * Holds topic names for incoming generation commands and outgoing generated facts.
+ */
 @Data
 @ConfigurationProperties(prefix = "app.kafka.topics")
 public class KafkaTopicsProperties {

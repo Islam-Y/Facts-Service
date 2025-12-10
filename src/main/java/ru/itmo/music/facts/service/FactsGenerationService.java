@@ -15,6 +15,10 @@ import ru.itmo.music.facts.client.MusicServiceClient;
 import ru.itmo.music.facts.model.FactsEventPayload;
 import ru.itmo.music.facts.model.TrackMetadata;
 
+/**
+ * Orchestrates facts generation: prioritizes incoming events, fetches track metadata,
+ * produces facts and publishes them back to Music Service.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j

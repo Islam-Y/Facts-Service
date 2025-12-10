@@ -5,6 +5,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 
+/**
+ * Entry point for the Facts Service: bootstraps Spring, Feign clients and configuration properties.
+ */
 @SpringBootApplication
 @EnableFeignClients
 @ConfigurationPropertiesScan

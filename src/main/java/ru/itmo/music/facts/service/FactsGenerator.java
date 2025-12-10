@@ -8,6 +8,9 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import ru.itmo.music.facts.model.TrackMetadata;
 
+/**
+ * Builds facts JSON based on track metadata (stub implementation without LLM for now).
+ */
 @Component
 @RequiredArgsConstructor
 public class FactsGenerator {

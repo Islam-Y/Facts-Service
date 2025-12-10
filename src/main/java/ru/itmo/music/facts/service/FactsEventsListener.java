@@ -7,6 +7,9 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import ru.itmo.music.facts.model.FactsEventPayload;
 
+/**
+ * Kafka listener that deserializes incoming commands and forwards them to the generation service.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j

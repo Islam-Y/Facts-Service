@@ -9,6 +9,9 @@ import tools.jackson.databind.ObjectMapper;
 import ru.itmo.music.facts.config.KafkaTopicsProperties;
 import ru.itmo.music.facts.model.GeneratedFactsPayload;
 
+/**
+ * Publishes generated facts to Kafka so Music Service can persist and cache them.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
