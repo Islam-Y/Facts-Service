@@ -55,19 +55,33 @@ public class FactsGenerationService {
             return;
         }
 
-        if (!requiresGeneration(payload.eventType())) {
-            log.debug("Ignore event type {} for track {}", payload.eventType(), payload.trackId());
+        String eventType = payload.eventType();
+        String trackId = payload.trackId();
+
+        if (isDeletedEvent(eventType)) {
+            if (trackId == null || trackId.isBlank()) {
+                log.warn("Skip deletion handling: trackId is missing in payload {}", payload);
+                return;
+            }
+
+            int removed = cancelPending(trackId);
+            log.info("Deleted track event: removed {} pending generation tasks for track {}", removed, trackId);
             return;
         }
 
-        if (payload.trackId() == null || payload.trackId().isBlank()) {
+        if (!requiresGeneration(eventType)) {
+            log.debug("Ignore event type {} for track {}", eventType, trackId);
+            return;
+        }
+
+        if (trackId == null || trackId.isBlank()) {
             log.warn("Skip facts generation: trackId is missing in payload {}", payload);
             return;
         }
 
         queue.offer(payload);
         log.info("Enqueued facts generation for track {}, eventType={}, priority={}, timestamp={}",
-                payload.trackId(), payload.eventType(), priorityOrDefault(payload), timestampOrDefault(payload));
+                trackId, eventType, priorityOrDefault(payload), timestampOrDefault(payload));
     }
 
     private void processQueue() {
@@ -114,5 +128,22 @@ public class FactsGenerationService {
 
     private static Instant timestampOrDefault(FactsEventPayload payload) {
         return payload.timestamp() != null ? payload.timestamp() : Instant.EPOCH;
+    }
+
+    private boolean isDeletedEvent(String eventType) {
+        return "deleted".equalsIgnoreCase(eventType);
+    }
+
+    private int cancelPending(String trackId) {
+        FactsEventPayload[] snapshot = queue.toArray(FactsEventPayload[]::new);
+        int removed = 0;
+
+        for (FactsEventPayload event : snapshot) {
+            if (trackId.equals(event.trackId()) && queue.remove(event)) {
+                removed++;
+            }
+        }
+
+        return removed;
     }
 }
