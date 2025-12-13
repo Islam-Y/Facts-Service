@@ -21,27 +21,33 @@ public class FactsGenerator {
      * Generates a deterministic stub fact so we can exercise the integration
      * end-to-end without calling an LLM yet.
      */
-    public String generateFacts(TrackMetadata metadata) {
+    public GenerationResult generateFacts(TrackMetadata metadata, String eventType) {
+        String scenario = normalizeEventType(eventType);
         Map<String, Object> fact = new LinkedHashMap<>();
         fact.put("formatVersion", 1);
         fact.put("lang", "ru");
-        fact.put("short", buildShortFact(metadata));
-        fact.put("full", buildFullFact(metadata));
+        fact.put("short", buildShortFact(metadata, scenario));
+        fact.put("full", buildFullFact(metadata, scenario));
 
         try {
-            return objectMapper.writeValueAsString(fact);
+            return new GenerationResult(scenario, objectMapper.writeValueAsString(fact));
         } catch (JacksonException e) {
             throw new IllegalStateException("Unable to serialize facts JSON", e);
         }
     }
 
-    private String buildShortFact(TrackMetadata metadata) {
+    private String buildShortFact(TrackMetadata metadata, String scenario) {
         String title = orDefault(metadata.title(), "неизвестный трек");
         String artist = orDefault(metadata.artist(), "неизвестного исполнителя");
-        return "“%s” — трек %s. Факт сгенерирован шаблонно для MVP.".formatted(title, artist);
+        return switch (scenario) {
+            case "created" -> "“%s” — новый трек %s. Факт создан впервые (scenario=created).".formatted(title, artist);
+            case "updated" -> "“%s” — обновлённый трек %s. Факт пересчитан (scenario=updated).".formatted(title, artist);
+            case "refresh" -> "“%s” — трек %s. Факт освежён по запросу (scenario=refresh).".formatted(title, artist);
+            default -> "“%s” — трек %s. Факт сгенерирован шаблонно для MVP (scenario=generic).".formatted(title, artist);
+        };
     }
 
-    private String buildFullFact(TrackMetadata metadata) {
+    private String buildFullFact(TrackMetadata metadata, String scenario) {
         StringBuilder builder = new StringBuilder();
         String title = orDefault(metadata.title(), "трек без названия");
         String artist = orDefault(metadata.artist(), "неизвестного исполнителя");
@@ -59,13 +65,30 @@ public class FactsGenerator {
             builder.append(". Имеет пометку Explicit — предупреждаем слушателей");
         }
 
-        builder.append(". Это stub-текст: LLM отключён, но пайплайн генерации работает.");
+        switch (scenario) {
+            case "created" -> builder.append(". Сценарий created: это первичная генерация фактов для нового трека.");
+            case "updated" -> builder.append(". Сценарий updated: обновляем факты после изменения данных трека.");
+            case "refresh" -> builder.append(". Сценарий refresh: переобновляем факты по запросу.");
+            default -> builder.append(". Сценарий generic: LLM отключён, но пайплайн генерации работает.");
+        }
 
         if (metadata.coverUrl() != null && !metadata.coverUrl().isBlank()) {
             builder.append(" Обложка трека: ").append(metadata.coverUrl());
         }
 
         return builder.toString();
+    }
+
+    private String normalizeEventType(String eventType) {
+        if (eventType == null || eventType.isBlank()) {
+            return "generic";
+        }
+
+        String normalized = eventType.trim().toLowerCase();
+        return switch (normalized) {
+            case "created", "updated", "refresh" -> normalized;
+            default -> "generic";
+        };
     }
 
     private String formatDuration(int durationMs) {
@@ -77,5 +100,8 @@ public class FactsGenerator {
 
     private String orDefault(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    public record GenerationResult(String templateName, String factsJson) {
     }
 }

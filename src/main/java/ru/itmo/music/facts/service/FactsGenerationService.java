@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import ru.itmo.music.facts.client.MusicServiceClient;
 import ru.itmo.music.facts.model.FactsEventPayload;
 import ru.itmo.music.facts.model.TrackMetadata;
+import ru.itmo.music.facts.service.FactsGenerator.GenerationResult;
 
 /**
  * Orchestrates facts generation: prioritizes incoming events, fetches track metadata,
@@ -70,7 +71,7 @@ public class FactsGenerationService {
         }
 
         if (!requiresGeneration(eventType)) {
-            log.debug("Ignore event type {} for track {}", eventType, trackId);
+            log.info("Ignore event type {} for track {}: not a generation scenario", eventType, trackId);
             return;
         }
 
@@ -88,6 +89,8 @@ public class FactsGenerationService {
         while (!Thread.currentThread().isInterrupted()) {
             try {
                 FactsEventPayload payload = queue.take();
+                log.info("Dequeued facts generation task for track {}, eventType={}, priority={}",
+                        payload.trackId(), payload.eventType(), priorityOrDefault(payload));
                 processGeneration(payload);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -98,16 +101,21 @@ public class FactsGenerationService {
     }
 
     private void processGeneration(FactsEventPayload payload) {
+        String trackId = payload.trackId();
+        String eventType = payload.eventType();
+        log.info("Start facts generation for track {}, eventType={}", trackId, eventType);
         try {
-            TrackMetadata metadata = musicServiceClient.getTrack(payload.trackId());
-            String factsJson = factsGenerator.generateFacts(metadata);
-            factsEventsPublisher.publishGeneratedFacts(payload.trackId(), factsJson);
+            TrackMetadata metadata = musicServiceClient.getTrack(trackId);
+            GenerationResult result = factsGenerator.generateFacts(metadata, eventType);
+            log.info("Facts generated for track {} using template={}, eventType={}", trackId, result.templateName(), eventType);
+            factsEventsPublisher.publishGeneratedFacts(trackId, result.factsJson(), eventType, result.templateName());
+            log.info("Completed facts generation pipeline for track {}, eventType={}, template={}", trackId, eventType, result.templateName());
         } catch (FeignException.NotFound e) {
-            log.warn("Track {} not found in Music Service, cannot generate facts", payload.trackId());
+            log.warn("Track {} not found in Music Service, cannot generate facts", trackId);
         } catch (FeignException e) {
-            log.error("Failed to fetch track {} from Music Service", payload.trackId(), e);
+            log.error("Failed to fetch track {} from Music Service", trackId, e);
         } catch (Exception e) {
-            log.error("Failed to generate facts for track {}", payload.trackId(), e);
+            log.error("Failed to generate facts for track {}", trackId, e);
         }
     }
 

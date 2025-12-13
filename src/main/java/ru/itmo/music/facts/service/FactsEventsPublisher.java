@@ -21,10 +21,11 @@ public class FactsEventsPublisher {
     private final KafkaTopicsProperties kafkaTopicsProperties;
     private final ObjectMapper objectMapper;
 
-    public void publishGeneratedFacts(String trackId, String factsJson) {
+    public void publishGeneratedFacts(String trackId, String factsJson, String eventType, String templateName) {
         String payload = serializePayload(new GeneratedFactsPayload(trackId, factsJson));
         kafkaTemplate.send(kafkaTopicsProperties.getGeneratedFacts(), trackId, payload);
-        log.info("Published generated facts for track {} to topic {}", trackId, kafkaTopicsProperties.getGeneratedFacts());
+        log.info("Published generated facts for track {} to topic {} [eventType={}, template={}]",
+                trackId, kafkaTopicsProperties.getGeneratedFacts(), eventType, templateName);
     }
 
     private String serializePayload(GeneratedFactsPayload payload) {
