@@ -18,10 +18,11 @@ public class KafkaConsumerConfig {
 
     @Bean
     public DefaultErrorHandler errorHandler(KafkaTemplate<String, String> template,
-                                            KafkaTopicsProperties topics) {
+        KafkaTopicsProperties topics) {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
                 template,
-                (record, ex) -> new TopicPartition(topics.getFactsEvents() + ".dlt", record.partition())
+                // Отправляем в партицию 0, чтобы хватило одного партиционированного DLT-топика.
+                (record, ex) -> new TopicPartition(topics.getFactsEvents() + ".dlt", 0)
         );
 
         ExponentialBackOffWithMaxRetries backOff = new ExponentialBackOffWithMaxRetries(2);

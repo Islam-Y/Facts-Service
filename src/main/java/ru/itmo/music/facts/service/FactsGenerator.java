@@ -37,6 +37,8 @@ public class FactsGenerator {
         String lastResponse = null;
 
         for (int attempt = 1; attempt <= maxFormatAttempts; attempt++) {
+            log.info("Requesting LLM facts for track {} (eventType={}, attempt {}/{}, model={}, temp={}, maxTokens={})",
+                    metadata.id(), eventType, attempt, maxFormatAttempts, proxyProps.getModel(), proxyProps.getTemperature(), proxyProps.getMaxTokens());
             String response = proxyApiClient.complete(buildMessages(metadata, eventType, attempt));
             lastResponse = response;
             try {
@@ -94,6 +96,7 @@ public class FactsGenerator {
 
     private FactContent parseFact(String rawContent) throws JacksonException {
         String cleaned = stripMarkdown(rawContent);
+        log.debug("LLM raw response (trimmed): {}", cleaned);
         return objectMapper.readValue(cleaned, FactContent.class);
     }
 

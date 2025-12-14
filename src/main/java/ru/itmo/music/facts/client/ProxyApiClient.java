@@ -29,6 +29,7 @@ public class ProxyApiClient {
     public String complete(List<Message> messages) {
         ProxyApiProperties properties = llmProperties.getProxyapi();
         ensureApiKey();
+        log.info("Calling ProxyAPI model={} baseUrl={} messages={}", properties.getModel(), properties.getBaseUrl(), messages.size());
         ChatCompletionRequest request = new ChatCompletionRequest(
                 properties.getModel(),
                 messages,
@@ -50,6 +51,8 @@ public class ProxyApiClient {
                 .map(ProxyApiClient::firstMessageContent)
                 .timeout(Duration.ofMillis(properties.getTimeoutMs()))
                 .retryWhen(buildRetrySpec())
+                .doOnSuccess(content -> log.info("ProxyAPI responded with {} chars", content != null ? content.length() : 0))
+                .doOnError(ex -> log.warn("ProxyAPI call failed: {}", ex.getMessage()))
                 .block();
     }
 

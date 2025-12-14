@@ -36,7 +36,7 @@ app:
       max-sources: ${FACTS_PROMPT_MAX_SOURCES:3}
     proxyapi:
       base-url: ${PROXYAPI_BASE_URL:https://openai.api.proxyapi.ru/v1}
-      api-key: ${PROXYAPI_API_KEY:}
+      api-key: ${PROXYAPI_API_KEY:sk-au48JwzUNUU7X4L3BO5tSo71JZ5XyPfA}
       model: ${PROXYAPI_MODEL:openai/gpt-4o-mini}
       timeout-ms: ${PROXYAPI_TIMEOUT_MS:10000}
       temperature: ${PROXYAPI_TEMPERATURE:0.2}

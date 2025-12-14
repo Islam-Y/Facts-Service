@@ -48,6 +48,8 @@ public class FactsGenerationService {
                 trackId, eventType, priorityOrDefault(payload), timestampOrDefault(payload));
 
         TrackMetadata metadata = fetchTrackMetadata(trackId);
+        log.info("Fetched track metadata for track {}: title='{}', artist='{}', year={}, explicit={}, durationMs={}",
+                trackId, metadata.title(), metadata.artist(), metadata.year(), metadata.explicit(), metadata.durationMs());
 
         try {
             GenerationResult result = generateFacts(metadata, eventType, trackId);
@@ -84,6 +86,7 @@ public class FactsGenerationService {
 
     private TrackMetadata fetchTrackMetadata(String trackId) {
         try {
+            log.info("Requesting track metadata from Music Service for track {}", trackId);
             return musicServiceClient.getTrack(trackId);
         } catch (FeignException.NotFound e) {
             log.warn("Track {} not found in Music Service, will send to DLT", trackId);
