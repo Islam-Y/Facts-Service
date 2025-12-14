@@ -11,3 +11,21 @@ app:
     topics:
       facts-events: music.facts.events
       generated-facts: music.track.facts.generated
+  llm:
+    provider: proxyapi
+    prompt:
+      format-version: 1
+      lang: ru
+      max-sources: 3
+    proxyapi:
+      base-url: https://openai.api.proxyapi.ru/v1
+      api-key: ${PROXYAPI_API_KEY:}
+      model: openai/gpt-4o-mini
+      timeout-ms: 10000
+      temperature: 0.2
+      max-tokens: 600
+      retry:
+        max-attempts: 3
+        backoff-ms: 400
+      format-retry:
+        max-attempts: 2

@@ -1,105 +1,161 @@
 package ru.itmo.music.facts.service;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JacksonException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
+import org.springframework.util.StringUtils;
+import ru.itmo.music.facts.client.ProxyApiClient;
+import ru.itmo.music.facts.client.ProxyApiClient.Message;
+import ru.itmo.music.facts.config.LlmProperties;
+import ru.itmo.music.facts.config.PromptProperties;
+import ru.itmo.music.facts.config.ProxyApiProperties;
 import ru.itmo.music.facts.model.TrackMetadata;
 
 /**
- * Builds facts JSON based on track metadata (stub implementation without LLM for now).
+ * Generates facts via ProxyAPI (OpenAI-compatible) using track metadata.
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class FactsGenerator {
 
+    private final ProxyApiClient proxyApiClient;
+    private final LlmProperties llmProperties;
     private final ObjectMapper objectMapper;
 
-    /**
-     * Generates a deterministic stub fact so we can exercise the integration
-     * end-to-end without calling an LLM yet.
-     */
+    private static final String TEMPLATE_NAME = "proxyapi";
+
     public GenerationResult generateFacts(TrackMetadata metadata, String eventType) {
-        String scenario = normalizeEventType(eventType);
-        Map<String, Object> fact = new LinkedHashMap<>();
-        fact.put("formatVersion", 1);
-        fact.put("lang", "ru");
-        fact.put("short", buildShortFact(metadata, scenario));
-        fact.put("full", buildFullFact(metadata, scenario));
+        ProxyApiProperties proxyProps = llmProperties.getProxyapi();
+        int maxFormatAttempts = Math.max(proxyProps.getFormatRetry().getMaxAttempts(), 1);
+        String lastResponse = null;
 
-        try {
-            return new GenerationResult(scenario, objectMapper.writeValueAsString(fact));
-        } catch (JacksonException e) {
-            throw new IllegalStateException("Unable to serialize facts JSON", e);
+        for (int attempt = 1; attempt <= maxFormatAttempts; attempt++) {
+            String response = proxyApiClient.complete(buildMessages(metadata, eventType, attempt));
+            lastResponse = response;
+            try {
+                FactContent fact = parseFact(response);
+                validate(fact);
+                String normalized = objectMapper.writeValueAsString(fact);
+                return new GenerationResult(TEMPLATE_NAME, normalized);
+            } catch (Exception ex) {
+                log.warn("LLM returned invalid fact format (attempt {}/{}): {}", attempt, maxFormatAttempts, ex.getMessage());
+                if (attempt == maxFormatAttempts) {
+                    throw new IllegalStateException("LLM returned invalid format after retries: " + ex.getMessage(), ex);
+                }
+            }
         }
+
+        throw new IllegalStateException("Unexpected fallthrough while generating facts. Last response: " + lastResponse);
     }
 
-    private String buildShortFact(TrackMetadata metadata, String scenario) {
-        String title = orDefault(metadata.title(), "неизвестный трек");
-        String artist = orDefault(metadata.artist(), "неизвестного исполнителя");
-        return switch (scenario) {
-            case "created" -> "“%s” — новый трек %s. Факт создан впервые (scenario=created).".formatted(title, artist);
-            case "updated" -> "“%s” — обновлённый трек %s. Факт пересчитан (scenario=updated).".formatted(title, artist);
-            case "refresh" -> "“%s” — трек %s. Факт освежён по запросу (scenario=refresh).".formatted(title, artist);
-            default -> "“%s” — трек %s. Факт сгенерирован шаблонно для MVP (scenario=generic).".formatted(title, artist);
-        };
+    private List<Message> buildMessages(TrackMetadata metadata, String eventType, int attempt) {
+        PromptProperties prompt = llmProperties.getPrompt();
+        List<Message> messages = new ArrayList<>();
+        messages.add(new Message("system", systemPrompt(prompt, attempt)));
+        messages.add(new Message("user", userPrompt(metadata, eventType, prompt)));
+        return messages;
     }
 
-    private String buildFullFact(TrackMetadata metadata, String scenario) {
-        StringBuilder builder = new StringBuilder();
-        String title = orDefault(metadata.title(), "трек без названия");
-        String artist = orDefault(metadata.artist(), "неизвестного исполнителя");
-        builder.append("Трек “").append(title).append("” от ").append(artist);
+    private String systemPrompt(PromptProperties prompt, int attempt) {
+        String base = """
+                Ты генерируешь один интересный факт о треке и возвращаешь строго JSON без Markdown и лишнего текста.
+                Формат: {"formatVersion":%d,"lang":"%s","short":"...","full":"...","sources":[{"title":"...","url":"..."}]}.
+                Обязательные поля: formatVersion, lang, short, full, sources (1..%d элементов, url должен быть https/http).
+                """
+                .formatted(prompt.getFormatVersion(), prompt.getLang(), prompt.getMaxSources());
 
-        if (metadata.year() != null) {
-            builder.append(", выпущенный в ").append(metadata.year()).append(" году");
+        if (attempt > 1) {
+            return base + "Предыдущий ответ был в неверном формате. Верни только JSON-объект без ``` и без пояснений.";
         }
-
-        if (metadata.durationMs() != null && metadata.durationMs() > 0) {
-            builder.append(", длится ").append(formatDuration(metadata.durationMs()));
-        }
-
-        if (Boolean.TRUE.equals(metadata.explicit())) {
-            builder.append(". Имеет пометку Explicit — предупреждаем слушателей");
-        }
-
-        switch (scenario) {
-            case "created" -> builder.append(". Сценарий created: это первичная генерация фактов для нового трека.");
-            case "updated" -> builder.append(". Сценарий updated: обновляем факты после изменения данных трека.");
-            case "refresh" -> builder.append(". Сценарий refresh: переобновляем факты по запросу.");
-            default -> builder.append(". Сценарий generic: LLM отключён, но пайплайн генерации работает.");
-        }
-
-        if (metadata.coverUrl() != null && !metadata.coverUrl().isBlank()) {
-            builder.append(" Обложка трека: ").append(metadata.coverUrl());
-        }
-
-        return builder.toString();
+        return base;
     }
 
-    private String normalizeEventType(String eventType) {
-        if (eventType == null || eventType.isBlank()) {
-            return "generic";
+    private String userPrompt(TrackMetadata metadata, String eventType, PromptProperties prompt) {
+        String title = safe(metadata.title());
+        String artist = safe(metadata.artist());
+        String year = metadata.year() != null ? metadata.year().toString() : "unknown";
+        String duration = metadata.durationMs() != null ? metadata.durationMs().toString() : "unknown";
+        String explicit = metadata.explicit() != null && metadata.explicit() ? "true" : "false";
+        String scenario = eventType != null ? eventType : "generic";
+
+        return """
+                Сгенерируй один проверяемый факт о треке.
+                title="%s"; artist="%s"; year=%s; durationMs=%s; explicit=%s; eventType=%s; lang=%s.
+                Если нет достоверной информации, напиши, что достоверный факт не найден, но сохрани формат.
+                """.formatted(title, artist, year, duration, explicit, scenario, prompt.getLang());
+    }
+
+    private FactContent parseFact(String rawContent) throws JacksonException {
+        String cleaned = stripMarkdown(rawContent);
+        return objectMapper.readValue(cleaned, FactContent.class);
+    }
+
+    private void validate(FactContent fact) {
+        if (fact.formatVersion == null) {
+            throw new IllegalArgumentException("formatVersion is missing");
         }
-
-        String normalized = eventType.trim().toLowerCase();
-        return switch (normalized) {
-            case "created", "updated", "refresh" -> normalized;
-            default -> "generic";
-        };
+        if (!StringUtils.hasText(fact.lang)) {
+            throw new IllegalArgumentException("lang is missing");
+        }
+        if (!StringUtils.hasText(fact.shortFact)) {
+            throw new IllegalArgumentException("short is missing");
+        }
+        if (!StringUtils.hasText(fact.full)) {
+            throw new IllegalArgumentException("full is missing");
+        }
+        if (fact.sources == null || fact.sources.isEmpty()) {
+            throw new IllegalArgumentException("sources are missing");
+        }
+        fact.sources.forEach(source -> {
+            if (!StringUtils.hasText(source.url)) {
+                throw new IllegalArgumentException("source url is missing");
+            }
+        });
     }
 
-    private String formatDuration(int durationMs) {
-        int totalSeconds = durationMs / 1000;
-        int minutes = totalSeconds / 60;
-        int seconds = totalSeconds % 60;
-        return "%d:%02d".formatted(minutes, seconds);
+    private String stripMarkdown(String text) {
+        if (!StringUtils.hasText(text)) {
+            return text;
+        }
+        String trimmed = text.trim();
+        if (trimmed.startsWith("```")) {
+            int firstNewline = trimmed.indexOf('\n');
+            if (firstNewline > 0) {
+                trimmed = trimmed.substring(firstNewline + 1);
+            }
+        }
+        if (trimmed.endsWith("```")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 3).trim();
+        }
+        return trimmed;
     }
 
-    private String orDefault(String value, String defaultValue) {
-        return value == null || value.isBlank() ? defaultValue : value;
+    private String safe(String value) {
+        return StringUtils.hasText(value) ? value : "unknown";
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record FactContent(
+            Integer formatVersion,
+            String lang,
+            @JsonProperty("short") String shortFact,
+            String full,
+            List<FactSource> sources
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record FactSource(
+            String title,
+            String url
+    ) {
     }
 
     public record GenerationResult(String templateName, String factsJson) {

@@ -4,10 +4,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JacksonException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import ru.itmo.music.facts.config.KafkaTopicsProperties;
 import ru.itmo.music.facts.model.GeneratedFactsPayload;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Publishes generated facts to Kafka so Music Service can persist and cache them.
@@ -23,7 +24,14 @@ public class FactsEventsPublisher {
 
     public void publishGeneratedFacts(String trackId, String factsJson, String eventType, String templateName) {
         String payload = serializePayload(new GeneratedFactsPayload(trackId, factsJson));
-        kafkaTemplate.send(kafkaTopicsProperties.getGeneratedFacts(), trackId, payload);
+        try {
+            kafkaTemplate.send(kafkaTopicsProperties.getGeneratedFacts(), trackId, payload).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while publishing generated facts for track " + trackId, e);
+        } catch (ExecutionException e) {
+            throw new IllegalStateException("Failed to publish generated facts for track " + trackId, e.getCause());
+        }
         log.info("Published generated facts for track {} to topic {} [eventType={}, template={}]",
                 trackId, kafkaTopicsProperties.getGeneratedFacts(), eventType, templateName);
     }

@@ -1,19 +1,22 @@
 spring:
   application:
     name: facts_service
-server:
-  port: 8081
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
       group-id: ${spring.application.name}
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
       properties:
         spring.json.trusted.packages: "*"
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    listener:
+      ack-mode: record
+server:
+  port: 8081
 
 app:
   music-service:
@@ -25,3 +28,21 @@ app:
       facts-events: ${FACTS_EVENTS_TOPIC:music.facts.events}
       # Выходные факты для Music Service
       generated-facts: ${GENERATED_FACTS_TOPIC:music.track.facts.generated}
+  llm:
+    provider: proxyapi
+    prompt:
+      format-version: ${FACTS_PROMPT_FORMAT_VERSION:1}
+      lang: ${FACTS_PROMPT_LANG:ru}
+      max-sources: ${FACTS_PROMPT_MAX_SOURCES:3}
+    proxyapi:
+      base-url: ${PROXYAPI_BASE_URL:https://openai.api.proxyapi.ru/v1}
+      api-key: ${PROXYAPI_API_KEY:}
+      model: ${PROXYAPI_MODEL:openai/gpt-4o-mini}
+      timeout-ms: ${PROXYAPI_TIMEOUT_MS:10000}
+      temperature: ${PROXYAPI_TEMPERATURE:0.2}
+      max-tokens: ${PROXYAPI_MAX_TOKENS:600}
+      retry:
+        max-attempts: ${PROXYAPI_RETRY_MAX_ATTEMPTS:3}
+        backoff-ms: ${PROXYAPI_RETRY_BACKOFF_MS:400}
+      format-retry:
+        max-attempts: ${PROXYAPI_FORMAT_RETRY_MAX_ATTEMPTS:2}
